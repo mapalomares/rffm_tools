@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-getCalendarioRFFM.py - v1.0
+getCalendarioRFFM.py - v1.2
 
-Descarga el calendario de una competición de rffm.es y lo exporta a Excel
+Descarga el calendario de una competición de rffm.es y lo exporta a Excel y PDF
 con las columnas: Jornada, Fecha, Local, Visitante.
-Las filas del equipo configurado en [highlight] se marcan con color.
+Las filas del equipo elegido se marcan con color y cada jornada se separa con
+una línea doble.
 
-Uso: python getCalendarioRFFM.py --conf getCalendarioRFFM.conf
+Uso: python getCalendarioRFFM.py "<url del calendario>"
 """
 
 import argparse
@@ -22,10 +23,16 @@ import requests
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONF = os.path.join(SCRIPT_DIR, "getCalendarioRFFM.conf")
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) getCalendarioRFFM/1.0"
+HEADERS = ["Jornada", "Fecha", "Local", "Visitante"]
+HEADER_COLOR = "FF305496"
 
 log = logging.getLogger("getCalendarioRFFM")
 
@@ -151,15 +158,30 @@ def slugify(text):
     return re.sub(r"[\s]+", "_", text)
 
 
-def write_excel(rows, calendar, cfg):
+def build_path(cfg, calendar, key):
+    """Ruta de salida a partir de la plantilla de nombre indicada en [output]."""
     folder = resolve_path(cfg.get("output", "folder", fallback="output"))
     os.makedirs(folder, exist_ok=True)
-    filename = cfg.get("output", "filename").format(
+    filename = cfg.get("output", key).format(
         competicion=slugify(calendar.get("competicion", "competicion")),
         grupo=slugify(calendar.get("grupo", "grupo")),
         temporada=slugify(calendar.get("temporada", "")),
     )
-    path = os.path.join(folder, filename)
+    return os.path.join(folder, filename)
+
+
+def is_highlighted(row, team_upper):
+    return bool(team_upper) and (
+        team_upper in row["local"].upper() or team_upper in row["visitante"].upper()
+    )
+
+
+def is_round_end(rows, idx):
+    return idx + 1 == len(rows) or rows[idx + 1]["jornada"] != rows[idx]["jornada"]
+
+
+def write_excel(rows, calendar, cfg):
+    path = build_path(cfg, calendar, "filename")
 
     highlight_team = cfg.get("highlight", "team", fallback="").strip().upper()
     fill = PatternFill("solid", fgColor=cfg.get("highlight", "color", fallback="FFFFF2CC"))
@@ -168,9 +190,9 @@ def write_excel(rows, calendar, cfg):
     ws = wb.active
     ws.title = cfg.get("output", "sheet_name", fallback="Calendario")
 
-    headers = ["Jornada", "Fecha", "Local", "Visitante"]
+    headers = HEADERS
     ws.append(headers)
-    header_fill = PatternFill("solid", fgColor="FF305496")
+    header_fill = PatternFill("solid", fgColor=HEADER_COLOR)
     for col in range(1, len(headers) + 1):
         cell = ws.cell(row=1, column=col)
         cell.font = Font(bold=True, color="FFFFFFFF")
@@ -184,16 +206,13 @@ def write_excel(rows, calendar, cfg):
         ws.append([row["jornada"], row["fecha"], row["local"], row["visitante"]])
         r = ws.max_row
         ws.cell(row=r, column=2).number_format = "DD/MM/YYYY"
-        if highlight_team and (
-            highlight_team in row["local"].upper() or highlight_team in row["visitante"].upper()
-        ):
+        if is_highlighted(row, highlight_team):
             marked += 1
             for col in range(1, len(headers) + 1):
                 ws.cell(row=r, column=col).fill = fill
                 ws.cell(row=r, column=col).font = Font(bold=True)
 
-        is_last_of_round = idx + 1 == len(rows) or rows[idx + 1]["jornada"] != row["jornada"]
-        if is_last_of_round:
+        if is_round_end(rows, idx):
             for col in range(1, len(headers) + 1):
                 ws.cell(row=r, column=col).border = round_border
 
@@ -208,8 +227,69 @@ def write_excel(rows, calendar, cfg):
     return path
 
 
+def argb_color(value, default):
+    """Convierte un color ARGB/RGB hexadecimal del .conf en un color de reportlab."""
+    rgb = (value or default).strip().lstrip("#")
+    if len(rgb) == 8:
+        rgb = rgb[2:]
+    return colors.HexColor(f"#{rgb}")
+
+
+def write_pdf(rows, calendar, cfg):
+    path = build_path(cfg, calendar, "pdf_filename")
+    highlight_team = cfg.get("highlight", "team", fallback="").strip().upper()
+    highlight_color = argb_color(cfg.get("highlight", "color", fallback=""), "FFFFF2CC")
+
+    data = [HEADERS]
+    style = [
+        ("BACKGROUND", (0, 0), (-1, 0), argb_color(HEADER_COLOR, HEADER_COLOR)),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ALIGN", (0, 1), (1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#BFBFBF")),
+    ]
+
+    for idx, row in enumerate(rows):
+        fecha = row["fecha"]
+        data.append(
+            [
+                str(row["jornada"]),
+                fecha.strftime("%d/%m/%Y") if hasattr(fecha, "strftime") else str(fecha),
+                row["local"],
+                row["visitante"],
+            ]
+        )
+        r = idx + 1
+        if is_highlighted(row, highlight_team):
+            style.append(("BACKGROUND", (0, r), (-1, r), highlight_color))
+            style.append(("FONTNAME", (0, r), (-1, r), "Helvetica-Bold"))
+        if is_round_end(rows, idx):
+            # count=2 dibuja la línea doble de separación entre jornadas
+            style.append(("LINEBELOW", (0, r), (-1, r), 0.6, colors.black, None, None, None, 2, 1.5))
+
+    doc = SimpleDocTemplate(
+        path,
+        pagesize=A4,
+        leftMargin=15 * mm,
+        rightMargin=15 * mm,
+        topMargin=12 * mm,
+        bottomMargin=12 * mm,
+        title=f"{calendar.get('competicion')} - {calendar.get('grupo')}",
+    )
+    table = Table(data, colWidths=[17 * mm, 23 * mm, 70 * mm, 70 * mm], repeatRows=1)
+    table.setStyle(TableStyle(style))
+    doc.build([table])
+
+    log.info(f"PDF generado: {path}")
+    return path
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Exporta el calendario RFFM a Excel.")
+    parser = argparse.ArgumentParser(description="Exporta el calendario RFFM a Excel y PDF.")
     parser.add_argument(
         "url", nargs="?", help="URL completa del calendario (si se omite, se usa la del .conf)"
     )
@@ -219,6 +299,7 @@ def main():
     parser.add_argument(
         "--no-prompt", action="store_true", help="No preguntar: usa el equipo del .conf"
     )
+    parser.add_argument("--no-pdf", action="store_true", help="No generar el PDF")
     args = parser.parse_args()
 
     cfg = load_config(args.conf)
@@ -246,6 +327,8 @@ def main():
     cfg.set("highlight", "team", team)
 
     write_excel(rows, calendar, cfg)
+    if not args.no_pdf and cfg.getboolean("output", "pdf", fallback=True):
+        write_pdf(rows, calendar, cfg)
 
 
 if __name__ == "__main__":
