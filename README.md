@@ -42,6 +42,10 @@ Opcionales:
 | `output` | `sheet_name` | Nombre de la hoja |
 | `highlight` | `team` | Equipo resaltado por defecto en la pregunta interactiva |
 | `highlight` | `color` | Color ARGB del relleno (ej. `FFFFF2CC`) |
+| `watermark` | `enabled` | Activa la marca de agua del PDF |
+| `watermark` | `team_match` | Solo se aplica si el equipo elegido contiene este texto |
+| `watermark` | `image` | Ruta de la imagen (ej. `images/Santa_Barbara_logo.png`) |
+| `watermark` | `opacity` | Opacidad de la marca de agua (0-1) |
 | `logs` | `folder` / `level` | Carpeta y nivel de log |
 
 ### Salidas
@@ -53,6 +57,8 @@ Opcionales:
 ### Notas
 
 Los datos se leen del bloque JSON `__NEXT_DATA__` que la web incrusta en el HTML; no requiere navegador ni JavaScript.
+
+La marca de agua solo se aplica al PDF: se escala al ancho de la tabla y se repite en vertical hasta donde termina la tabla (Excel no soporta marcas de agua reales).
 
 ---
 
@@ -93,3 +99,5 @@ Same keys as described in the Spanish table above: source URL/timeout, output fo
 ### Notes
 
 Data is parsed from the `__NEXT_DATA__` JSON block embedded in the page HTML; no browser or JavaScript execution is required.
+
+The watermark applies to the PDF only: it is scaled to the table width and tiled vertically until the table ends (Excel has no real watermark support).

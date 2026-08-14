@@ -18,6 +18,7 @@ import os
 import re
 import sys
 from datetime import datetime
+from functools import partial
 
 import requests
 from openpyxl import Workbook
@@ -26,6 +27,7 @@ from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -235,6 +237,58 @@ def argb_color(value, default):
     return colors.HexColor(f"#{rgb}")
 
 
+def watermark_image(cfg, team):
+    """Ruta de la marca de agua si el equipo elegido coincide con el patrón del .conf."""
+    if not cfg.getboolean("watermark", "enabled", fallback=False) or not team:
+        return None
+    pattern = cfg.get("watermark", "team_match", fallback="").strip().upper()
+    if not pattern or pattern not in team.upper():
+        return None
+    image = resolve_path(cfg.get("watermark", "image", fallback=""))
+    if not os.path.isfile(image):
+        log.warning(f"Marca de agua no encontrada: {image}")
+        return None
+    return image
+
+
+def tile_watermark(canvas, doc, image, opacity, table_heights):
+    """Repite la imagen en vertical, del ancho de la tabla y solo mientras haya tabla."""
+    height = table_heights[doc.page - 1] if doc.page <= len(table_heights) else 0
+    if height <= 0:
+        return
+
+    img = ImageReader(image)
+    iw, ih = img.getSize()
+    width = doc.width
+    tile_h = width * ih / iw
+    top = doc.bottomMargin + doc.height
+
+    canvas.saveState()
+    clip = canvas.beginPath()
+    clip.rect(doc.leftMargin, top - height, width, height)
+    canvas.clipPath(clip, stroke=0)
+    canvas.setFillAlpha(opacity)
+    y = top - tile_h
+    while y > top - height - tile_h:
+        canvas.drawImage(img, doc.leftMargin, y, width, tile_h, mask="auto")
+        y -= tile_h
+    canvas.restoreState()
+
+
+def split_heights(table, avail_w, avail_h):
+    """Altura ocupada por la tabla en cada página."""
+    heights = []
+    rest = table
+    for _ in range(1000):
+        parts = rest.split(avail_w, avail_h)
+        if len(parts) < 2:
+            heights.append(rest.wrap(avail_w, avail_h)[1])
+            break
+        heights.append(parts[0].wrap(avail_w, avail_h)[1])
+        rest = parts[1]
+    return heights
+
+
 def write_pdf(rows, calendar, cfg):
     path = build_path(cfg, calendar, "pdf_filename")
     highlight_team = cfg.get("highlight", "team", fallback="").strip().upper()
@@ -282,7 +336,16 @@ def write_pdf(rows, calendar, cfg):
     )
     table = Table(data, colWidths=[17 * mm, 23 * mm, 70 * mm, 70 * mm], repeatRows=1)
     table.setStyle(TableStyle(style))
-    doc.build([table])
+
+    image = watermark_image(cfg, cfg.get("highlight", "team", fallback=""))
+    if image:
+        opacity = cfg.getfloat("watermark", "opacity", fallback=0.12)
+        heights = split_heights(table, doc.width, doc.height)
+        on_page = partial(tile_watermark, image=image, opacity=opacity, table_heights=heights)
+        log.info(f"Marca de agua aplicada: {image}")
+        doc.build([table], onFirstPage=on_page, onLaterPages=on_page)
+    else:
+        doc.build([table])
 
     log.info(f"PDF generado: {path}")
     return path
