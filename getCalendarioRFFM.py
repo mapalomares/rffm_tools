@@ -100,6 +100,44 @@ def extract_rows(calendar):
     return rows
 
 
+def list_teams(rows):
+    """Lista ordenada de equipos distintos que aparecen en el calendario."""
+    return sorted({r["local"] for r in rows} | {r["visitante"] for r in rows})
+
+
+def choose_team(teams, default=""):
+    """Pregunta por consola qué equipo resaltar. Devuelve '' si no se resalta ninguno."""
+    if not sys.stdin.isatty():
+        log.info("Entrada no interactiva: se mantiene el equipo configurado.")
+        return default
+
+    default_idx = next(
+        (i for i, t in enumerate(teams, start=1) if t.upper() == default.strip().upper()), None
+    )
+
+    print("\nEquipos del grupo:")
+    print("   0. (ninguno, no resaltar)")
+    for i, team in enumerate(teams, start=1):
+        mark = " *" if i == default_idx else ""
+        print(f"  {i:2}. {team}{mark}")
+
+    suffix = f" [{default_idx}]" if default_idx else " [0]"
+    while True:
+        answer = input(f"\nEquipo a resaltar{suffix}: ").strip()
+        if not answer:
+            return teams[default_idx - 1] if default_idx else ""
+        if answer.isdigit() and 0 <= int(answer) <= len(teams):
+            idx = int(answer)
+            return teams[idx - 1] if idx else ""
+        matches = [t for t in teams if answer.upper() in t.upper()]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            print(f"Hay {len(matches)} coincidencias, concreta más o usa el número.")
+        else:
+            print("Opción no válida.")
+
+
 def parse_date(value):
     """Convierte 'dd-mm-yyyy' en date; si no es válida, devuelve el texto original."""
     try:
@@ -165,25 +203,30 @@ def write_excel(rows, calendar, cfg):
         ws.column_dimensions[get_column_letter(col)].width = width
 
     wb.save(path)
-    log.info(f"Filas resaltadas para '{cfg.get('highlight', 'team')}': {marked}")
+    log.info(f"Filas resaltadas para '{highlight_team or '(ninguno)'}': {marked}")
     log.info(f"Excel generado: {path}")
     return path
 
 
 def main():
     parser = argparse.ArgumentParser(description="Exporta el calendario RFFM a Excel.")
+    parser.add_argument(
+        "url", nargs="?", help="URL completa del calendario (si se omite, se usa la del .conf)"
+    )
     parser.add_argument("--conf", default=DEFAULT_CONF, help="Ruta del fichero .conf")
-    parser.add_argument("--url", help="Sobrescribe la URL del .conf")
-    parser.add_argument("--team", help="Sobrescribe el equipo a resaltar")
+    parser.add_argument("--url", dest="url_opt", help="Alternativa a la URL posicional")
+    parser.add_argument("--team", help="Equipo a resaltar; omite la pregunta interactiva")
+    parser.add_argument(
+        "--no-prompt", action="store_true", help="No preguntar: usa el equipo del .conf"
+    )
     args = parser.parse_args()
 
     cfg = load_config(args.conf)
     setup_logging(cfg)
 
-    if args.url:
-        cfg.set("source", "url", args.url)
-    if args.team:
-        cfg.set("highlight", "team", args.team)
+    url = args.url or args.url_opt
+    if url:
+        cfg.set("source", "url", url)
 
     calendar = fetch_calendar(
         cfg.get("source", "url"), cfg.getint("source", "timeout", fallback=30)
@@ -193,6 +236,15 @@ def main():
         f"| Temporada {calendar.get('temporada')}"
     )
     rows = extract_rows(calendar)
+
+    if args.team:
+        team = args.team
+    elif args.no_prompt:
+        team = cfg.get("highlight", "team", fallback="")
+    else:
+        team = choose_team(list_teams(rows), cfg.get("highlight", "team", fallback=""))
+    cfg.set("highlight", "team", team)
+
     write_excel(rows, calendar, cfg)
 
 

@@ -13,13 +13,21 @@ pip install requests openpyxl
 ### Uso
 
 ```powershell
+# URL completa como parámetro; el script pregunta qué equipo resaltar
+python getCalendarioRFFM.py "https://www.rffm.es/competicion/calendario?temporada=22&tipojuego=1&competicion=26737828&grupo=26737840"
+
+# Usando la URL del .conf
 python getCalendarioRFFM.py --conf getCalendarioRFFM.conf
 ```
 
+Al arrancar muestra los equipos del grupo numerados: introduce el número, parte del nombre, `0` para no resaltar ninguno, o Enter para aceptar el equipo por defecto (`*`, el del `.conf`).
+
 Opcionales:
 
-- `--url <URL>`: sobrescribe la URL del `.conf`.
-- `--team "<NOMBRE EQUIPO>"`: sobrescribe el equipo a resaltar (coincidencia parcial).
+- `--url <URL>`: alternativa a la URL posicional.
+- `--team "<NOMBRE EQUIPO>"`: fija el equipo a resaltar y omite la pregunta (coincidencia parcial).
+- `--no-prompt`: no pregunta; usa el equipo del `.conf`.
+- `--conf <ruta>`: fichero de configuración alternativo.
 
 ### Configuración (`getCalendarioRFFM.conf`)
 
@@ -30,7 +38,7 @@ Opcionales:
 | `output` | `folder` | Carpeta de salida (por defecto `output`) |
 | `output` | `filename` | Nombre del Excel; admite `{competicion}`, `{grupo}`, `{temporada}` |
 | `output` | `sheet_name` | Nombre de la hoja |
-| `highlight` | `team` | Equipo a resaltar (coincidencia parcial, sin distinguir mayúsculas) |
+| `highlight` | `team` | Equipo resaltado por defecto en la pregunta interactiva |
 | `highlight` | `color` | Color ARGB del relleno (ej. `FFFFF2CC`) |
 | `logs` | `folder` / `level` | Carpeta y nivel de log |
 
@@ -58,10 +66,16 @@ pip install requests openpyxl
 ### Usage
 
 ```powershell
+# Full URL as argument; the script asks which team to highlight
+python getCalendarioRFFM.py "https://www.rffm.es/competicion/calendario?temporada=22&tipojuego=1&competicion=26737828&grupo=26737840"
+
+# Using the URL from the .conf file
 python getCalendarioRFFM.py --conf getCalendarioRFFM.conf
 ```
 
-Optional: `--url <URL>` overrides the configured URL, `--team "<TEAM NAME>"` overrides the highlighted team (partial match).
+It prints the numbered list of teams in the group: type the number, part of the name, `0` for none, or press Enter to accept the default team (`*`, taken from the `.conf`).
+
+Optional: `--url <URL>` (alternative to the positional URL), `--team "<TEAM NAME>"` (skips the prompt, partial match), `--no-prompt` (uses the team from the `.conf`), `--conf <path>`.
 
 ### Configuration (`getCalendarioRFFM.conf`)
 
