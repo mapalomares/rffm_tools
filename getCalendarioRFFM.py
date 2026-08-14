@@ -20,7 +20,7 @@ from datetime import datetime
 
 import requests
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -139,8 +139,10 @@ def write_excel(rows, calendar, cfg):
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center")
 
+    round_border = Border(bottom=Side(style="double", color="FF000000"))
+
     marked = 0
-    for row in rows:
+    for idx, row in enumerate(rows):
         ws.append([row["jornada"], row["fecha"], row["local"], row["visitante"]])
         r = ws.max_row
         ws.cell(row=r, column=2).number_format = "DD/MM/YYYY"
@@ -151,6 +153,11 @@ def write_excel(rows, calendar, cfg):
             for col in range(1, len(headers) + 1):
                 ws.cell(row=r, column=col).fill = fill
                 ws.cell(row=r, column=col).font = Font(bold=True)
+
+        is_last_of_round = idx + 1 == len(rows) or rows[idx + 1]["jornada"] != row["jornada"]
+        if is_last_of_round:
+            for col in range(1, len(headers) + 1):
+                ws.cell(row=r, column=col).border = round_border
 
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = f"A1:D{ws.max_row}"
