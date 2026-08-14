@@ -1,0 +1,14 @@
+# Salidas y logs generados en cada ejecución
+output/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Ficheros temporales de Excel/OS
+~$*.xlsx
+Thumbs.db
+desktop.ini
