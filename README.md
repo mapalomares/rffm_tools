@@ -101,3 +101,94 @@ Same keys as described in the Spanish table above: source URL/timeout, output fo
 Data is parsed from the `__NEXT_DATA__` JSON block embedded in the page HTML; no browser or JavaScript execution is required.
 
 The watermark applies to the PDF only: it is scaled to the table width and tiled vertically until the table ends (Excel has no real watermark support).
+
+---
+
+# getEquiposRFFM
+
+## Español
+
+**Propósito**: dada la URL de la clasificación de un grupo de la RFFM (rffm.es), recorre todos los equipos (siguiendo el enlace a la ficha de cada uno) y recoge `Equipo`, `Localidad`, `Terreno de juego` y `Equipación` (camiseta/pantalón/medias). El resultado se exporta a Excel.
+
+### Requisitos
+
+```powershell
+pip install -r requirements.txt
+```
+
+### Uso
+
+```powershell
+# URL completa como parámetro (el parámetro 'jornada' es irrelevante y puede omitirse)
+python getEquiposRFFM.py "https://www.rffm.es/competicion/clasificaciones?temporada=22&tipojuego=1&competicion=26737828&grupo=26737840"
+
+# Usando la URL del .conf
+python getEquiposRFFM.py --conf getEquiposRFFM.conf
+```
+
+Opcionales:
+
+- `--url <URL>`: alternativa a la URL posicional.
+- `--conf <ruta>`: fichero de configuración alternativo.
+
+### Configuración (`getEquiposRFFM.conf`)
+
+| Sección | Clave | Descripción |
+|---|---|---|
+| `source` | `url` | URL de la clasificación (`temporada`, `tipojuego`, `competicion`, `grupo`) |
+| `source` | `timeout` | Timeout de descarga en segundos |
+| `source` | `delay` | Pausa entre la descarga de cada ficha de equipo |
+| `output` | `folder` | Carpeta de salida (por defecto `output`) |
+| `output` | `filename` | Nombre del Excel; admite `{competicion}`, `{grupo}`, `{temporada}` |
+| `output` | `sheet_name` | Nombre de la hoja |
+| `logs` | `folder` / `level` | Carpeta y nivel de log |
+
+### Salidas
+
+- `output/equipos_<competicion>_<grupo>_<temporada>.xlsx`
+- `logs/getEquiposRFFM_<timestamp>.log`
+
+### Notas
+
+Los datos se leen del bloque JSON `__NEXT_DATA__` de la página de clasificación y de la ficha de cada equipo (`https://www.rffm.es/fichaequipo/<codigo>`); no requiere navegador ni JavaScript.
+
+El campo `Terreno de juego` se construye a partir del campo `campo` de la ficha (formato `LOCALIDAD - NOMBRE (ANOTACIÓN)`), mostrando `Nombre (Localidad)`. La `Equipación` usa siempre la primera equipación (principal) tal como aparece en la ficha del equipo.
+
+---
+
+## English
+
+**Purpose**: given the URL of a RFFM (rffm.es) group standings page, iterates through every team (following the link to each team's detail page) and collects `Equipo` (team), `Localidad` (town), `Terreno de juego` (home ground) and `Equipación` (kit: shirt/shorts/socks). The result is exported to Excel.
+
+### Requirements
+
+```powershell
+pip install -r requirements.txt
+```
+
+### Usage
+
+```powershell
+# Full URL as argument (the 'jornada' parameter is irrelevant and can be omitted)
+python getEquiposRFFM.py "https://www.rffm.es/competicion/clasificaciones?temporada=22&tipojuego=1&competicion=26737828&grupo=26737840"
+
+# Using the URL from the .conf file
+python getEquiposRFFM.py --conf getEquiposRFFM.conf
+```
+
+Optional: `--url <URL>` (alternative to the positional URL), `--conf <path>`.
+
+### Configuration (`getEquiposRFFM.conf`)
+
+Same keys as described in the Spanish table above: source URL/timeout/delay, output folder/filename/sheet, and log folder/level.
+
+### Outputs
+
+- `output/equipos_<competition>_<group>_<season>.xlsx`
+- `logs/getEquiposRFFM_<timestamp>.log`
+
+### Notes
+
+Data is parsed from the `__NEXT_DATA__` JSON block on the standings page and on each team's detail page (`https://www.rffm.es/fichaequipo/<id>`); no browser or JavaScript execution is required.
+
+The `Terreno de juego` field is built from the ground's `campo` value (format `TOWN - NAME (NOTE)`), rendered as `Name (Town)`. `Equipación` always uses the first (main) kit as listed on the team's page.
