@@ -68,10 +68,15 @@ def resolve_path(path):
     return path if os.path.isabs(path) else os.path.join(SCRIPT_DIR, path)
 
 
-def fetch_calendar(url, timeout):
+def fetch_calendar(url, timeout, verify=True):
     """Descarga la página y extrae el bloque JSON __NEXT_DATA__ con el calendario."""
     log.info(f"Descargando: {url}")
-    resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
+    resp = requests.get(
+        url,
+        headers={"User-Agent": USER_AGENT},
+        timeout=timeout,
+        verify=verify,
+    )
     resp.raise_for_status()
 
     match = re.search(
@@ -289,8 +294,10 @@ def split_heights(table, avail_w, avail_h):
     return heights
 
 
-def write_pdf(rows, calendar, cfg):
-    path = build_path(cfg, calendar, "pdf_filename")
+def write_pdf(
+    rows, calendar, cfg, filename_key="pdf_filename", label="PDF", highlight_rows=True
+):
+    path = build_path(cfg, calendar, filename_key)
     highlight_team = cfg.get("highlight", "team", fallback="").strip().upper()
     highlight_color = argb_color(cfg.get("highlight", "color", fallback=""), "FFFFF2CC")
 
@@ -318,7 +325,7 @@ def write_pdf(rows, calendar, cfg):
             ]
         )
         r = idx + 1
-        if is_highlighted(row, highlight_team):
+        if highlight_rows and is_highlighted(row, highlight_team):
             style.append(("BACKGROUND", (0, r), (-1, r), highlight_color))
             style.append(("FONTNAME", (0, r), (-1, r), "Helvetica-Bold"))
         if is_round_end(rows, idx):
@@ -347,7 +354,7 @@ def write_pdf(rows, calendar, cfg):
     else:
         doc.build([table])
 
-    log.info(f"PDF generado: {path}")
+    log.info(f"{label} generado: {path}")
     return path
 
 
@@ -372,8 +379,22 @@ def main():
     if url:
         cfg.set("source", "url", url)
 
+    verify_setting = cfg.get("source", "verify", fallback="true").strip()
+    if verify_setting.lower() in {"true", "yes", "1"}:
+        verify = True
+    elif verify_setting.lower() in {"false", "no", "0"}:
+        verify = False
+        log.warning("Verificación TLS desactivada en source.verify.")
+    else:
+        verify = resolve_path(verify_setting)
+        if not os.path.isfile(verify):
+            log.error(f"Bundle de certificados no encontrado: {verify}")
+            sys.exit(2)
+
     calendar = fetch_calendar(
-        cfg.get("source", "url"), cfg.getint("source", "timeout", fallback=30)
+        cfg.get("source", "url"),
+        cfg.getint("source", "timeout", fallback=30),
+        verify=verify,
     )
     log.info(
         f"Competición: {calendar.get('competicion')} | {calendar.get('grupo')} "
@@ -392,6 +413,18 @@ def main():
     write_excel(rows, calendar, cfg)
     if not args.no_pdf and cfg.getboolean("output", "pdf", fallback=True):
         write_pdf(rows, calendar, cfg)
+        compact_rows = [row for row in rows if is_highlighted(row, team.upper())]
+        if team and cfg.getboolean("output", "compact_pdf", fallback=True):
+            write_pdf(
+                compact_rows,
+                calendar,
+                cfg,
+                filename_key="compact_pdf_filename",
+                label="PDF compacto",
+                highlight_rows=False,
+            )
+        elif not team:
+            log.warning("No se genera el PDF compacto porque no hay equipo seleccionado.")
 
 
 if __name__ == "__main__":
